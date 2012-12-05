@@ -1,0 +1,27 @@
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr, Constructor: CC} = Components;
+
+const ServerSocketUDP = CC("@mozilla.org/network/server-socket-udp;1",
+                        "nsIUDPServerSocket",
+                        "init");
+
+-----------------------------------------------------------------------------
+
+var port = 4321;
+var loopback = false; // true = localhost, false = everybody
+var socket = new ServerSocketUDP(port, loopback);
+debug(">>> listening on port " + socket.port);
+var socket.asyncListen(this);
+
+onPacketReceived: function(socket, data, clientIp, clientPort) {
+  debug("socket:" + socket);
+  debug(">>> new packet from: " + clientIp + ":" + clientPort);
+  debug(">>> data: " + data);
+
+  socket.sendMsg(data, clientIp, clientPort);
+},
+
+onStopListening: function(socket, status) {
+  debug(">>> shutting down server on port " + socket.port);
+},
+ 
+socket.close();

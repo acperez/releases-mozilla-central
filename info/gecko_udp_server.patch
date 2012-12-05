@@ -1,0 +1,853 @@
+diff --git a/netwerk/base/public/Makefile.in b/netwerk/base/public/Makefile.in
+index c823281..bf33ae4 100644
+--- a/netwerk/base/public/Makefile.in
++++ b/netwerk/base/public/Makefile.in
+@@ -68,16 +68,17 @@ XPIDLSRCS	= \
+ 		nsIProtocolProxyCallback.idl \
+ 		nsIProxiedProtocolHandler.idl \
+ 		nsIProxyInfo.idl \
+ 		nsITransport.idl \
+ 		nsISocketTransport.idl \
+ 		nsISocketTransportService.idl \
+ 		nsISpeculativeConnect.idl \
+ 		nsIServerSocket.idl \
++		nsIUDPServerSocket.idl \
+ 		nsIResumableChannel.idl \
+ 		nsIRequestObserverProxy.idl \
+ 		nsISecurityInfoProvider.idl \
+ 		nsIStreamListenerTee.idl \
+ 		nsISimpleStreamListener.idl \
+ 		nsIStreamTransportService.idl \
+ 		nsIStreamLoader.idl \
+ 		nsISyncStreamListener.idl \
+diff --git a/netwerk/base/public/nsIUDPServerSocket.idl b/netwerk/base/public/nsIUDPServerSocket.idl
+new file mode 100644
+index 0000000..f26f15c
+--- /dev/null
++++ b/netwerk/base/public/nsIUDPServerSocket.idl
+@@ -0,0 +1,141 @@
++/* vim:set ts=4 sw=4 et cindent: */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "nsISupports.idl"
++
++interface nsIUDPServerSocketListener;
++interface nsISocketTransport;
++
++native PRNetAddr(union PRNetAddr);
++[ptr] native PRNetAddrPtr(union PRNetAddr);
++
++/**
++ * nsIUDPServerSocket
++ *
++ * An interface to a server socket that can accept incoming connections.
++ */
++[scriptable, uuid(c2a38bd0-024b-4ae8-bcb2-20d766b54389)]
++interface nsIUDPServerSocket : nsISupports
++{
++    /**
++     * init
++     *
++     * This method initializes a server socket.
++     *
++     * @param aPort
++     *        The port of the server socket.  Pass -1 to indicate no preference,
++     *        and a port will be selected automatically.
++     * @param aLoopbackOnly
++     *        If true, the server socket will only respond to connections on the
++     *        local loopback interface.  Otherwise, it will accept connections
++     *        from any interface.  To specify a particular network interface,
++     *        use initWithAddress.
++     */
++    void init(in long aPort, in boolean aLoopbackOnly);
++
++    /**
++     * initWithAddress
++     *
++     * This method initializes a server socket, and binds it to a particular
++     * local address (and hence a particular local network interface).
++     *
++     * @param aAddr
++     *        The address to which this server socket should be bound.
++     */
++    [noscript] void initWithAddress([const] in PRNetAddrPtr aAddr);
++
++    /**
++     * close
++     *
++     * This method closes a server socket.  This does not affect already
++     * connected client sockets (i.e., the nsISocketTransport instances
++     * created from this server socket).  This will cause the onStopListening
++     * event to asynchronously fire with a status of NS_BINDING_ABORTED.
++     */
++    void close();
++
++    /**
++     * asyncListen
++     *
++     * This method puts the server socket in the listening state.  It will
++     * asynchronously listen for and accept client connections.  The listener
++     * will be notified once for each client connection that is accepted.  The
++     * listener's onSocketAccepted method will be called on the same thread
++     * that called asyncListen (the calling thread must have a nsIEventTarget).
++     *
++     * The listener will be passed a reference to an already connected socket
++     * transport (nsISocketTransport).  See below for more details.
++     *
++     * @param aListener
++     *        The listener to be notified when client connections are accepted.
++     */
++    void asyncListen(in nsIUDPServerSocketListener aListener);
++
++    void sendMsg(in ACString aMsg, in ACString aTargetIp, in long aTargetPort);
++
++    /**
++     * Returns the port of this server socket.
++     */
++    readonly attribute long port;
++
++    /**
++     * Returns the address to which this server socket is bound.  Since a
++     * server socket may be bound to multiple network devices, this address
++     * may not necessarily be specific to a single network device.  In the
++     * case of an IP socket, the IP address field would be zerod out to
++     * indicate a server socket bound to all network devices.  Therefore,
++     * this method cannot be used to determine the IP address of the local
++     * system.  See nsIDNSService::myHostName if this is what you need.
++     */
++    [noscript] PRNetAddr getAddress();
++};
++
++/**
++ * nsIUDPServerSocketListener
++ *
++ * This interface is notified whenever a server socket accepts a new connection.
++ * The transport is in the connected state, and read/write streams can be opened
++ * using the normal nsITransport API.  The address of the client can be found by
++ * calling the nsISocketTransport::GetAddress method or by inspecting
++ * nsISocketTransport::GetHost, which returns a string representation of the
++ * client's IP address (NOTE: this may be an IPv4 or IPv6 string literal).
++ */
++[scriptable, uuid(0500a336-29b2-4df1-9103-911f8ee0a569)]
++interface nsIUDPServerSocketListener : nsISupports
++{
++    /**
++     * onPacketReceived
++     *
++     * This method is called when a client sends an UDP packet.
++     *
++     * @param aServ
++     *        The server socket.
++     * @param aData
++     *        The data of the packet.
++     * @param aClientIp
++     *        The ip address of the client.
++     * @param aClientPort
++     *        The port of the client socket.
++     */
++    void onPacketReceived(in nsIUDPServerSocket aServ,
++                          in ACString aData,
++                          in ACString aClientIp,
++                          in long aClientPort);
++
++    /**
++     * onStopListening
++     *
++     * This method is called when the listening socket stops for some reason.
++     * The server socket is effectively dead after this notification.
++     *
++     * @param aServ
++     *        The server socket.
++     * @param aStatus
++     *        The reason why the server socket stopped listening.  If the
++     *        server socket was manually closed, then this value will be
++     *        NS_BINDING_ABORTED.
++     */
++    void onStopListening(in nsIUDPServerSocket aServ, in nsresult aStatus);
++};
+diff --git a/netwerk/base/src/Makefile.in b/netwerk/base/src/Makefile.in
+index 7ebd512..e566627 100644
+--- a/netwerk/base/src/Makefile.in
++++ b/netwerk/base/src/Makefile.in
+@@ -46,16 +46,17 @@ CPPSRCS		= \
+ 		nsRequestObserverProxy.cpp \
+ 		nsSimpleStreamListener.cpp \
+ 		nsSimpleURI.cpp \
+ 		nsSimpleNestedURI.cpp \
+ 		nsStandardURL.cpp \
+ 		nsSocketTransport2.cpp \
+ 		nsSocketTransportService2.cpp \
+ 		nsServerSocket.cpp \
++		nsUDPServerSocket.cpp \
+ 		nsStreamListenerTee.cpp \
+ 		nsStreamLoader.cpp \
+ 		nsSyncStreamListener.cpp \
+ 		nsUnicharStreamLoader.cpp \
+ 		nsURIChecker.cpp \
+ 		nsURLHelper.cpp \
+ 		nsURLParsers.cpp \
+ 		nsNetAddr.cpp \
+diff --git a/netwerk/base/src/nsUDPServerSocket.cpp b/netwerk/base/src/nsUDPServerSocket.cpp
+new file mode 100644
+index 0000000..0f6ab49
+--- /dev/null
++++ b/netwerk/base/src/nsUDPServerSocket.cpp
+@@ -0,0 +1,488 @@
++/* vim:set ts=2 sw=2 et cindent: */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "nsIServiceManager.h"
++#include "nsSocketTransport2.h"
++#include "nsUDPServerSocket.h"
++#include "nsProxyRelease.h"
++#include "nsAutoPtr.h"
++#include "nsError.h"
++#include "nsNetCID.h"
++#include "prnetdb.h"
++#include "prio.h"
++#include "mozilla/Attributes.h"
++
++using namespace mozilla;
++
++static NS_DEFINE_CID(kSocketTransportServiceCID, NS_SOCKETTRANSPORTSERVICE_CID);
++
++//-----------------------------------------------------------------------------
++
++typedef void (nsUDPServerSocket:: *nsUDPServerSocketFunc)(void);
++
++static nsresult
++PostEvent(nsUDPServerSocket *s, nsUDPServerSocketFunc func)
++{
++  nsCOMPtr<nsIRunnable> ev = NS_NewRunnableMethod(s, func);
++  if (!ev)
++    return NS_ERROR_OUT_OF_MEMORY;
++
++  if (!gSocketTransportService)
++    return NS_ERROR_FAILURE;
++
++  return gSocketTransportService->Dispatch(ev, NS_DISPATCH_NORMAL);
++}
++
++//-----------------------------------------------------------------------------
++// nsServerSocket
++//-----------------------------------------------------------------------------
++
++nsUDPServerSocket::nsUDPServerSocket()
++  : mLock("nsServerSocket.mLock")
++  , mFD(nullptr)
++  , mAttached(false)
++{
++  // we want to be able to access the STS directly, and it may not have been
++  // constructed yet.  the STS constructor sets gSocketTransportService.
++  if (!gSocketTransportService)
++  {
++    // This call can fail if we're offline, for example.
++    nsCOMPtr<nsISocketTransportService> sts =
++        do_GetService(kSocketTransportServiceCID);
++  }
++  // make sure the STS sticks around as long as we do
++  NS_IF_ADDREF(gSocketTransportService);
++}
++
++nsUDPServerSocket::~nsUDPServerSocket()
++{
++  Close(); // just in case :)
++
++  // release our reference to the STS
++  nsSocketTransportService *serv = gSocketTransportService;
++  NS_IF_RELEASE(serv);
++}
++
++void
++nsUDPServerSocket::OnMsgClose()
++{
++  SOCKET_LOG(("nsServerSocket::OnMsgClose [this=%p]\n", this));
++
++  if (NS_FAILED(mCondition))
++    return;
++
++  // tear down socket.  this signals the STS to detach our socket handler.
++  mCondition = NS_BINDING_ABORTED;
++
++  // if we are attached, then we'll close the socket in our OnSocketDetached.
++  // otherwise, call OnSocketDetached from here.
++  if (!mAttached)
++    OnSocketDetached(mFD);
++}
++
++void
++nsUDPServerSocket::OnMsgAttach()
++{
++  SOCKET_LOG(("nsServerSocket::OnMsgAttach [this=%p]\n", this));
++
++  if (NS_FAILED(mCondition))
++    return;
++
++  mCondition = TryAttach();
++
++  // if we hit an error while trying to attach then bail...
++  if (NS_FAILED(mCondition))
++  {
++    NS_ASSERTION(!mAttached, "should not be attached already");
++    OnSocketDetached(mFD);
++  }
++}
++
++nsresult
++nsUDPServerSocket::TryAttach()
++{
++  nsresult rv;
++
++  if (!gSocketTransportService)
++    return NS_ERROR_FAILURE;
++
++  //
++  // find out if it is going to be ok to attach another socket to the STS.
++  // if not then we have to wait for the STS to tell us that it is ok.
++  // the notification is asynchronous, which means that when we could be
++  // in a race to call AttachSocket once notified.  for this reason, when
++  // we get notified, we just re-enter this function.  as a result, we are
++  // sure to ask again before calling AttachSocket.  in this way we deal
++  // with the race condition.  though it isn't the most elegant solution,
++  // it is far simpler than trying to build a system that would guarantee
++  // FIFO ordering (which wouldn't even be that valuable IMO).  see bug
++  // 194402 for more info.
++  //
++  if (!gSocketTransportService->CanAttachSocket())
++  {
++    nsCOMPtr<nsIRunnable> event =
++      NS_NewRunnableMethod(this, &nsUDPServerSocket::OnMsgAttach);
++    if (!event)
++      return NS_ERROR_OUT_OF_MEMORY;
++
++    nsresult rv = gSocketTransportService->NotifyWhenCanAttachSocket(event);
++    if (NS_FAILED(rv))
++      return rv;
++  }
++
++  //
++  // ok, we can now attach our socket to the STS for polling
++  //
++  rv = gSocketTransportService->AttachSocket(mFD, this);
++  if (NS_FAILED(rv))
++    return rv;
++
++  mAttached = true;
++
++  //
++  // now, configure our poll flags for listening...
++  //
++  mPollFlags = (PR_POLL_READ | PR_POLL_EXCEPT);
++  return NS_OK;
++}
++
++//-----------------------------------------------------------------------------
++// nsServerSocket::nsASocketHandler
++//-----------------------------------------------------------------------------
++
++void
++nsUDPServerSocket::OnSocketReady(PRFileDesc *fd, int16_t outFlags)
++{
++  NS_ASSERTION(NS_SUCCEEDED(mCondition), "oops");
++  NS_ASSERTION(mFD == fd, "wrong file descriptor");
++  NS_ASSERTION(outFlags != -1, "unexpected timeout condition reached");
++
++  if (outFlags & (PR_POLL_ERR | PR_POLL_HUP | PR_POLL_NVAL))
++  {
++    NS_WARNING("error polling on listening socket");
++    mCondition = NS_ERROR_UNEXPECTED;
++    return;
++  }
++
++  PRNetAddr clientAddr;
++  uint32_t count;
++  char buff[1500];
++
++  count = PR_RecvFrom(mFD, buff, sizeof(buff), 0, &clientAddr, PR_INTERVAL_NO_WAIT);
++
++  if (count < 1) {
++    NS_WARNING("error of recvfrom on UDP socket");
++    return;
++  }
++
++  char ip[64];
++  PR_NetAddrToString(&clientAddr, ip, sizeof(ip));
++  PRUint16 port = PR_ntohs(PR_NetAddrInetPort(&clientAddr));
++
++  nsCString data;
++  if (!data.Assign(buff, count - 1, mozilla::fallible_t())) {
++    mCondition = NS_ERROR_OUT_OF_MEMORY;
++    return;
++  }
++
++  nsCString address;
++  if (!address.Assign(ip, strlen(ip), mozilla::fallible_t())) {
++    mCondition = NS_ERROR_OUT_OF_MEMORY;
++    return;
++  }
++
++  mListener->OnPacketReceived(this, data, address, port);
++}
++
++void
++nsUDPServerSocket::OnSocketDetached(PRFileDesc *fd)
++{
++  // force a failure condition if none set; maybe the STS is shutting down :-/
++  if (NS_SUCCEEDED(mCondition))
++    mCondition = NS_ERROR_ABORT;
++
++  if (mFD)
++  {
++    NS_ASSERTION(mFD == fd, "wrong file descriptor");
++    PR_Close(mFD);
++    mFD = nullptr;
++  }
++
++  if (mListener)
++  {
++    mListener->OnStopListening(this, mCondition);
++
++    // need to atomically clear mListener.  see our Close() method.
++    nsIUDPServerSocketListener *listener = nullptr;
++    {
++      MutexAutoLock lock(mLock);
++      mListener.swap(listener);
++    }
++    // XXX we need to proxy the release to the listener's target thread to work
++    // around bug 337492.
++    if (listener)
++      NS_ProxyRelease(mListenerTarget, listener);
++  }
++}
++
++void
++nsUDPServerSocket::IsLocal(bool *aIsLocal)
++{
++  // If bound to loopback, this server socket only accepts local connections.
++  *aIsLocal = PR_IsNetAddrType(&mAddr, PR_IpAddrLoopback);
++}
++
++//-----------------------------------------------------------------------------
++// nsServerSocket::nsISupports
++//-----------------------------------------------------------------------------
++
++NS_IMPL_THREADSAFE_ISUPPORTS1(nsUDPServerSocket, nsIUDPServerSocket)
++
++
++//-----------------------------------------------------------------------------
++// nsServerSocket::nsIServerSocket
++//-----------------------------------------------------------------------------
++
++NS_IMETHODIMP
++nsUDPServerSocket::Init(int32_t aPort, bool aLoopbackOnly)
++{
++  PRNetAddrValue val;
++  PRNetAddr addr;
++
++  if (aPort < 0)
++    aPort = 0;
++  if (aLoopbackOnly)
++    val = PR_IpAddrLoopback;
++  else
++    val = PR_IpAddrAny;
++
++  PR_SetNetAddr(val, PR_AF_INET, aPort, &addr);
++
++  return InitWithAddress(&addr);
++}
++
++NS_IMETHODIMP
++nsUDPServerSocket::InitWithAddress(const PRNetAddr *aAddr)
++{
++  NS_ENSURE_TRUE(mFD == nullptr, NS_ERROR_ALREADY_INITIALIZED);
++
++  //
++  // configure listening socket...
++  //
++
++  mFD = PR_OpenUDPSocket(aAddr->raw.family);
++  if (!mFD)
++  {
++    NS_WARNING("unable to create server socket");
++    return NS_ERROR_FAILURE;
++  }
++
++  PRSocketOptionData opt;
++
++  opt.option = PR_SockOpt_Reuseaddr;
++  opt.value.reuse_addr = true;
++  PR_SetSocketOption(mFD, &opt);
++
++  opt.option = PR_SockOpt_Nonblocking;
++  opt.value.non_blocking = true;
++  PR_SetSocketOption(mFD, &opt);
++
++  if (PR_Bind(mFD, aAddr) != PR_SUCCESS)
++  {
++    NS_WARNING("failed to bind socket");
++    goto fail;
++  }
++
++  // get the resulting socket address, which may be different than what
++  // we passed to bind.
++  if (PR_GetSockName(mFD, &mAddr) != PR_SUCCESS)
++  {
++    NS_WARNING("cannot get socket name");
++    goto fail;
++  }
++
++  // wait until AsyncListen is called before polling the socket for
++  // client connections.
++  return NS_OK;
++
++fail:
++  Close();
++  return NS_ERROR_FAILURE;
++}
++
++NS_IMETHODIMP
++nsUDPServerSocket::SendMsg(const nsACString &aMsg, const nsACString &aTargetIp, int32_t aTargetPort)
++{
++  PRNetAddr addr;
++  PR_SetNetAddr(PR_IpAddrNull, PR_AF_INET, aTargetPort, &addr);
++  if (PR_StringToNetAddr(aTargetIp.BeginReading(), &addr) != PR_SUCCESS) {
++    NS_WARNING("error creating addr");
++    return NS_ERROR_FAILURE;
++  }
++
++  PRInt32 count = PR_SendTo(mFD, aMsg.BeginReading(), aMsg.Length(), 0, &addr, PR_INTERVAL_NO_WAIT);
++  if (count < 0) {
++    NS_WARNING("error writting to UDP socket");
++    return NS_ERROR_FAILURE;
++  }
++
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsUDPServerSocket::Close()
++{
++  {
++    MutexAutoLock lock(mLock);
++    // we want to proxy the close operation to the socket thread if a listener
++    // has been set.  otherwise, we should just close the socket here...
++    if (!mListener)
++    {
++      if (mFD)
++      {
++        PR_Close(mFD);
++        mFD = nullptr;
++      }
++      return NS_OK;
++    }
++  }
++  return PostEvent(this, &nsUDPServerSocket::OnMsgClose);
++}
++
++namespace {
++
++class ServerSocketListenerProxy MOZ_FINAL : public nsIUDPServerSocketListener
++{
++public:
++  ServerSocketListenerProxy(nsIUDPServerSocketListener* aListener)
++    : mListener(aListener)
++    , mTargetThread(do_GetCurrentThread())
++  { }
++
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIUDPSERVERSOCKETLISTENER
++
++  class OnPacketReceivedRunnable : public nsRunnable
++  {
++  public:
++    OnPacketReceivedRunnable(nsIUDPServerSocketListener* aListener,
++                     nsIUDPServerSocket* aServ,
++                     const nsACString &aData,
++                     const nsACString &aClientIp,
++                     int32_t aClientPort)
++      : mListener(aListener)
++      , mServ(aServ)
++      , mData(aData)
++      , mClientIp(aClientIp)
++      , mClientPort(aClientPort)
++    { }
++
++    NS_DECL_NSIRUNNABLE
++
++  private:
++    nsCOMPtr<nsIUDPServerSocketListener> mListener;
++    nsCOMPtr<nsIUDPServerSocket> mServ;
++    nsCString mData;
++    nsCString mClientIp;
++    int32_t mClientPort;
++  };
++
++  class OnStopListeningRunnable : public nsRunnable
++  {
++  public:
++    OnStopListeningRunnable(nsIUDPServerSocketListener* aListener,
++                            nsIUDPServerSocket* aServ,
++                            nsresult aStatus)
++      : mListener(aListener)
++      , mServ(aServ)
++      , mStatus(aStatus)
++    { }
++
++    NS_DECL_NSIRUNNABLE
++
++  private:
++    nsCOMPtr<nsIUDPServerSocketListener> mListener;
++    nsCOMPtr<nsIUDPServerSocket> mServ;
++    nsresult mStatus;
++  };
++
++private:
++  nsCOMPtr<nsIUDPServerSocketListener> mListener;
++  nsCOMPtr<nsIEventTarget> mTargetThread;
++};
++
++NS_IMPL_THREADSAFE_ISUPPORTS1(ServerSocketListenerProxy,
++                              nsIUDPServerSocketListener)
++
++NS_IMETHODIMP
++ServerSocketListenerProxy::OnPacketReceived(nsIUDPServerSocket* aServ,
++                                            const nsACString &aData,
++                                            const nsACString &aClientIp,
++                                            int32_t aClientPort)
++{
++  nsRefPtr<OnPacketReceivedRunnable> r =
++    new OnPacketReceivedRunnable(mListener, aServ, aData, aClientIp, aClientPort);
++  return mTargetThread->Dispatch(r, NS_DISPATCH_NORMAL);
++}
++
++NS_IMETHODIMP
++ServerSocketListenerProxy::OnStopListening(nsIUDPServerSocket* aServ,
++                                           nsresult aStatus)
++{
++  nsRefPtr<OnStopListeningRunnable> r =
++    new OnStopListeningRunnable(mListener, aServ, aStatus);
++  return mTargetThread->Dispatch(r, NS_DISPATCH_NORMAL);
++}
++
++NS_IMETHODIMP
++ServerSocketListenerProxy::OnPacketReceivedRunnable::Run()
++{
++  mListener->OnPacketReceived(mServ, mData, mClientIp, mClientPort);
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++ServerSocketListenerProxy::OnStopListeningRunnable::Run()
++{
++  mListener->OnStopListening(mServ, mStatus);
++  return NS_OK;
++}
++
++} // anonymous namespace
++
++NS_IMETHODIMP
++nsUDPServerSocket::AsyncListen(nsIUDPServerSocketListener *aListener)
++{
++  // ensuring mFD implies ensuring mLock
++  NS_ENSURE_TRUE(mFD, NS_ERROR_NOT_INITIALIZED);
++  NS_ENSURE_TRUE(mListener == nullptr, NS_ERROR_IN_PROGRESS);
++  {
++    MutexAutoLock lock(mLock);
++    mListener = new ServerSocketListenerProxy(aListener);
++    mListenerTarget = NS_GetCurrentThread();
++  }
++  return PostEvent(this, &nsUDPServerSocket::OnMsgAttach);
++}
++
++NS_IMETHODIMP
++nsUDPServerSocket::GetPort(int32_t *aResult)
++{
++  // no need to enter the lock here
++  uint16_t port;
++  if (mAddr.raw.family == PR_AF_INET)
++    port = mAddr.inet.port;
++  else
++    port = mAddr.ipv6.port;
++  *aResult = (int32_t) PR_ntohs(port);
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsUDPServerSocket::GetAddress(PRNetAddr *aResult)
++{
++  // no need to enter the lock here
++  memcpy(aResult, &mAddr, sizeof(mAddr));
++  return NS_OK;
++}
+diff --git a/netwerk/base/src/nsUDPServerSocket.h b/netwerk/base/src/nsUDPServerSocket.h
+new file mode 100644
+index 0000000..3342b82
+--- /dev/null
++++ b/netwerk/base/src/nsUDPServerSocket.h
+@@ -0,0 +1,50 @@
++/* vim:set ts=2 sw=2 et cindent: */
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef nsUDPServerSocket_h__
++#define nsUDPServerSocket_h__
++
++#include "nsIUDPServerSocket.h"
++#include "nsSocketTransportService2.h"
++#include "mozilla/Mutex.h"
++
++//-----------------------------------------------------------------------------
++
++class nsUDPServerSocket : public nsASocketHandler
++                        , public nsIUDPServerSocket
++{
++public:
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIUDPSERVERSOCKET
++
++  // nsASocketHandler methods:
++  virtual void OnSocketReady(PRFileDesc *fd, int16_t outFlags);
++  virtual void OnSocketDetached(PRFileDesc *fd);
++  virtual void IsLocal(bool *aIsLocal);
++
++  nsUDPServerSocket();
++
++  // This must be public to support older compilers (xlC_r on AIX)
++  virtual ~nsUDPServerSocket();
++
++private:
++  void OnMsgClose();
++  void OnMsgAttach();
++
++  // try attaching our socket (mFD) to the STS's poll list.
++  nsresult TryAttach();
++
++  // lock protects access to mListener; so it is not cleared while being used.
++  mozilla::Mutex                    mLock;
++  PRFileDesc                       *mFD;
++  PRNetAddr                         mAddr;
++  nsCOMPtr<nsIUDPServerSocketListener> mListener;
++  nsCOMPtr<nsIEventTarget>          mListenerTarget;
++  bool                              mAttached;
++};
++
++//-----------------------------------------------------------------------------
++
++#endif // nsUDPServerSocket_h__
+diff --git a/netwerk/build/nsNetCID.h b/netwerk/build/nsNetCID.h
+index 633c036..50aa9ad 100644
+--- a/netwerk/build/nsNetCID.h
++++ b/netwerk/build/nsNetCID.h
+@@ -354,16 +354,29 @@
+ #define NS_SERVERSOCKET_CID                          \
+ { /* 2ec62893-3b35-48fa-ab1d-5e68a9f45f08 */         \
+     0x2ec62893,                                      \
+     0x3b35,                                          \
+     0x48fa,                                          \
+     {0xab, 0x1d, 0x5e, 0x68, 0xa9, 0xf4, 0x5f, 0x08} \
+ }
+ 
++// component implementing nsIUDPServerSocket
++#define NS_UDPSERVERSOCKET_CLASSNAME \
++    "nsUDPServerSocket"
++#define NS_UDPSERVERSOCKET_CONTRACTID \
++    "@mozilla.org/network/server-socket-udp;1"
++#define NS_UDPSERVERSOCKET_CID                       \
++{ /* c9f74572-7b8e-4fec-bb4a-03c0d3021bd6 */         \
++    0xc9f74572,                                      \
++    0x7b8e,                                          \
++    0x4fec,                                          \
++    {0xbb, 0x4a, 0x03, 0xc0, 0xd3, 0x02, 0x1b, 0xd6} \
++}
++
+ #define NS_LOCALFILEINPUTSTREAM_CLASSNAME \
+     "nsFileInputStream"
+ #define NS_LOCALFILEINPUTSTREAM_CONTRACTID \
+     "@mozilla.org/network/file-input-stream;1"
+ #define NS_LOCALFILEINPUTSTREAM_CID                  \
+ { /* be9a53ae-c7e9-11d3-8cda-0060b0fc14a3 */         \
+     0xbe9a53ae,                                      \
+     0xc7e9,                                          \
+diff --git a/netwerk/build/nsNetModule.cpp b/netwerk/build/nsNetModule.cpp
+index 08714d8..ea3a3ea 100644
+--- a/netwerk/build/nsNetModule.cpp
++++ b/netwerk/build/nsNetModule.cpp
+@@ -69,16 +69,19 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsStreamTransportService, Init)
+ #include "nsSocketTransportService2.h"
+ #undef LOG
+ #undef LOG_ENABLED
+ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsSocketTransportService, Init)
+ 
+ #include "nsServerSocket.h"
+ NS_GENERIC_FACTORY_CONSTRUCTOR(nsServerSocket)
+ 
++#include "nsUDPServerSocket.h"
++NS_GENERIC_FACTORY_CONSTRUCTOR(nsUDPServerSocket)
++
+ #include "nsUDPSocketProvider.h"
+ NS_GENERIC_FACTORY_CONSTRUCTOR(nsUDPSocketProvider)
+ 
+ #include "nsAsyncStreamCopier.h"
+ NS_GENERIC_FACTORY_CONSTRUCTOR(nsAsyncStreamCopier)
+ 
+ #include "nsInputStreamPump.h"
+ NS_GENERIC_FACTORY_CONSTRUCTOR(nsInputStreamPump)
+@@ -656,16 +659,17 @@ static void nsNetShutdown()
+     delete gDataSniffers;
+     gDataSniffers = nullptr;
+ }
+ 
+ NS_DEFINE_NAMED_CID(NS_IOSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_STREAMTRANSPORTSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_SOCKETTRANSPORTSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_SERVERSOCKET_CID);
++NS_DEFINE_NAMED_CID(NS_UDPSERVERSOCKET_CID);
+ NS_DEFINE_NAMED_CID(NS_SOCKETPROVIDERSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_DNSSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_IDNSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_EFFECTIVETLDSERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_SIMPLEURI_CID);
+ NS_DEFINE_NAMED_CID(NS_SIMPLENESTEDURI_CID);
+ NS_DEFINE_NAMED_CID(NS_ASYNCSTREAMCOPIER_CID);
+ NS_DEFINE_NAMED_CID(NS_INPUTSTREAMPUMP_CID);
+@@ -788,16 +792,17 @@ NS_DEFINE_NAMED_CID(NS_NETWORK_LINK_SERVICE_CID);
+ NS_DEFINE_NAMED_CID(NS_SERIALIZATION_HELPER_CID);
+ NS_DEFINE_NAMED_CID(NS_REDIRECTCHANNELREGISTRAR_CID);
+ 
+ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
+     { &kNS_IOSERVICE_CID, false, NULL, nsIOServiceConstructor },
+     { &kNS_STREAMTRANSPORTSERVICE_CID, false, NULL, nsStreamTransportServiceConstructor },
+     { &kNS_SOCKETTRANSPORTSERVICE_CID, false, NULL, nsSocketTransportServiceConstructor },
+     { &kNS_SERVERSOCKET_CID, false, NULL, nsServerSocketConstructor },
++    { &kNS_UDPSERVERSOCKET_CID, false, NULL, nsUDPServerSocketConstructor },
+     { &kNS_SOCKETPROVIDERSERVICE_CID, false, NULL, nsSocketProviderService::Create },
+     { &kNS_DNSSERVICE_CID, false, NULL, nsDNSServiceConstructor },
+     { &kNS_IDNSERVICE_CID, false, NULL, nsIDNServiceConstructor },
+     { &kNS_EFFECTIVETLDSERVICE_CID, false, NULL, nsEffectiveTLDServiceConstructor },
+     { &kNS_SIMPLEURI_CID, false, NULL, nsSimpleURIConstructor },
+     { &kNS_SIMPLENESTEDURI_CID, false, NULL, nsSimpleNestedURIConstructor },
+     { &kNS_ASYNCSTREAMCOPIER_CID, false, NULL, nsAsyncStreamCopierConstructor },
+     { &kNS_INPUTSTREAMPUMP_CID, false, NULL, nsInputStreamPumpConstructor },
+@@ -925,16 +930,17 @@ static const mozilla::Module::CIDEntry kNeckoCIDs[] = {
+ };
+ 
+ static const mozilla::Module::ContractIDEntry kNeckoContracts[] = {
+     { NS_IOSERVICE_CONTRACTID, &kNS_IOSERVICE_CID },
+     { NS_NETUTIL_CONTRACTID, &kNS_IOSERVICE_CID },
+     { NS_STREAMTRANSPORTSERVICE_CONTRACTID, &kNS_STREAMTRANSPORTSERVICE_CID },
+     { NS_SOCKETTRANSPORTSERVICE_CONTRACTID, &kNS_SOCKETTRANSPORTSERVICE_CID },
+     { NS_SERVERSOCKET_CONTRACTID, &kNS_SERVERSOCKET_CID },
++    { NS_UDPSERVERSOCKET_CONTRACTID, &kNS_UDPSERVERSOCKET_CID },
+     { NS_SOCKETPROVIDERSERVICE_CONTRACTID, &kNS_SOCKETPROVIDERSERVICE_CID },
+     { NS_DNSSERVICE_CONTRACTID, &kNS_DNSSERVICE_CID },
+     { NS_IDNSERVICE_CONTRACTID, &kNS_IDNSERVICE_CID },
+     { NS_EFFECTIVETLDSERVICE_CONTRACTID, &kNS_EFFECTIVETLDSERVICE_CID },
+     { NS_SIMPLEURI_CONTRACTID, &kNS_SIMPLEURI_CID },
+     { NS_ASYNCSTREAMCOPIER_CONTRACTID, &kNS_ASYNCSTREAMCOPIER_CID },
+     { NS_INPUTSTREAMPUMP_CONTRACTID, &kNS_INPUTSTREAMPUMP_CID },
+     { NS_INPUTSTREAMCHANNEL_CONTRACTID, &kNS_INPUTSTREAMCHANNEL_CID },

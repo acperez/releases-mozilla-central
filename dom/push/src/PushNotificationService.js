@@ -297,7 +297,7 @@ PushNotificationService.prototype = {
   },
 
   getCurrentURL: function (mm, msg) {
-    this._db.getWA(msg.manifestURL, msg.watoken, function (error, success){
+    this._db.getWA(msg.manifestURL, null, function (error, success){
       if (success) {
         mm.sendAsyncMessage("PushNotification:CurrentURL:Return",
                             { id: msg.id, error: null, result: success })
@@ -787,7 +787,7 @@ extend(slaveNotificationBase.prototype, {
   },
 
   finish: function finish() {
-    if (this.master.udpModeEnabled && this.master.requestQueue.length <= 1) {
+    if (this.master.udpModeEnabled && this.master.requestQueue.length <= 1 && this.master.ws) {
       if (DEBUG) {
         debug("Close websocket and wait notifications through UDP");
       }

@@ -63,7 +63,7 @@ PushNotificationManager.prototype = {
 
     let request = this.createRequest();
     cpmm.sendAsyncMessage("PushNotification:CurrentURL",
-                          {id: this.getRequestId(request)});
+                          {id: this.getRequestId(request), manifestURL: this.manifestURL});
     return request;
   },
 

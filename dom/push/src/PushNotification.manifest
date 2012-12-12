@@ -1,0 +1,7 @@
+component {535a5dff-ad11-48b3-8577-933570c145e9} PushNotificationService.js
+contract @mozilla.org/pushnotificationservice;1 {535a5dff-ad11-48b3-8577-933570c145e9}
+category profile-after-change PushNotificationService @mozilla.org/pushnotificationservice;1
+
+component {af1ab247-9048-4794-8809-006230f7a354} PushNotificationManager.js
+contract @mozilla.org/pushnotificationmanager;1 {af1ab247-9048-4794-8809-006230f7a354}
+category JavaScript-navigator-property mozPush @mozilla.org/pushnotificationmanager;1

@@ -260,6 +260,7 @@
 @BINPATH@/components/necko_viewsource.xpt
 @BINPATH@/components/necko_wifi.xpt
 @BINPATH@/components/necko_wyciwyg.xpt
+@BINPATH@/components/necko_websocket.xpt
 @BINPATH@/components/necko.xpt
 @BINPATH@/components/loginmgr.xpt
 @BINPATH@/components/parentalcontrols.xpt
@@ -516,6 +517,11 @@
 @BINPATH@/components/PaymentFlowInfo.js
 @BINPATH@/components/PaymentRequestInfo.js
 @BINPATH@/components/Payment.manifest
+
+@BINPATH@/components/PushNotification.manifest
+@BINPATH@/components/PushNotificationManager.js
+@BINPATH@/components/PushNotificationService.js
+@BINPATH@/components/dom_push.xpt
 
 ; Modules
 @BINPATH@/modules/*

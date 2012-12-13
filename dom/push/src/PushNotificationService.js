@@ -682,22 +682,25 @@ slaveNotificationReceiver.prototype = {
       debug("NotificationReceiver worker");
       debug(msg);
     }
-    let msgo = JSON.parse(msg);
 
-    if (!Array.isArray(msgo)) {
-      msgo = [msgo];
-    }
+    if (msg) {
+      let msgo = JSON.parse(msg);
 
-    try {
-      let self = this;
-      msgo.forEach(function (msg_item) {
-        let handler =
-          self['handle_msg_' + msg_item.messageType].bind(self);
-        handler(msg_item);
-      });
-    } catch(e) {
-      if (DEBUG) {
-        debug("Exception: " + e );
+      if (!Array.isArray(msgo)) {
+        msgo = [msgo];
+      }
+
+      try {
+        let self = this;
+        msgo.forEach(function (msg_item) {
+          let handler =
+            self['handle_msg_' + msg_item.messageType].bind(self);
+          handler(msg_item);
+        });
+      } catch(e) {
+        if (DEBUG) {
+          debug("Exception: " + e );
+        }
       }
     }
   },
@@ -840,11 +843,11 @@ extend(slaveSyncUA.prototype, {
 
         // Send notifications to apps
         notifications.forEach(function (notification) {
-          this.onMessageAvailable(this, JSON.stringify(notification.payload));
+          this.onMessageAvailable(this, JSON.stringify(notification));
 
           let msg = {
             messageType: "ack",
-            messageId: notification.payload.messageId 
+            messageId: notification.messageId 
           };
           this.master.sendMsg(JSON.stringify(msg), true);
         }.bind(this));
